@@ -35,15 +35,19 @@ class ProgrammersChatProtocol(LineReceiver):
 		elif self.state == 'CHAT':
 			line = line.strip()
 			if line.split()[0][0] == '/':
+				print 'handle comand called`'
 				self.handleCOMMAND(line[1:])	
 			else:
 				line = self.name.strip().join('<>') + ' ' + line
 				self.handleCHAT(line)
-		elif line == 'SEND-FILE':
-			self.state = 'GET-FILE-SIZE'
-			self.sendLine(self.state)
+		#elif line.strip() == 'SEND-FILE':
+		#	print 'Received : ', line
+		#	self.state = 'GET-FILE-SIZE'
+		#	self.sendLine(self.state)
+		
 		elif self.state == 'GET-FILE-SIZE':
 			self.fileSize = int(line.strip())
+			print 'File Size : ', self.fileSize
 			self.state = 'RECV-FILE'
 			self.sendLine(self.state)
 		elif self.state == 'RECV-FILE':
@@ -65,14 +69,16 @@ class ProgrammersChatProtocol(LineReceiver):
 		#	print 'File Data :>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', data
 		if data.endswith('\r\n') :
 			self.fileReceiver.write(data[:-2])
-			self.setLineMode()
+			#self.setLineMode()
 			
 			#print 'File Transfer Complete.'
 			self.fileReceiver.close()
 			self.fileReceiver = None
 			self.fileData = ()
 			self.state = 'CHAT'
-			#self.setLineMode()
+			self.setLineMode()
+			print 'File Transfer complete'
+			return
 		else:
 			self.fileReceiver.write(data)
 			
@@ -98,7 +104,7 @@ class ProgrammersChatProtocol(LineReceiver):
 
 	def handleCOMMAND(self, command):
 		### TO DO : log the command
-		print command
+		print 'Command : ', command
 		if command == 'online':
 			onlineList = ''
 			for name, protocol in self.users.iteritems():
@@ -113,6 +119,7 @@ class ProgrammersChatProtocol(LineReceiver):
 			print '%s wants to send a file' % (self.name.strip())
 			self.state = 'GET-FILE-SIZE'
 			self.fileName = command.split()[2]
+			print 'State : ', self.state
 			self.sendLine(self.state)
 			print 'FileName : %s' % (self.fileName)
 

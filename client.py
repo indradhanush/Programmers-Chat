@@ -1,128 +1,154 @@
-from twisted.internet.protocol import ServerFactory
+#twisted imports
+from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.protocols.basic import LineReceiver
-from twisted.internet import reactor
+from twisted.internet.stdio import StandardIO
 
+#system imports
+from sys import stdout
+from os.path import getsize
 
-class ProgrammersChatProtocol(LineReceiver):
-	
-	def __init__(self, users):
-		self.users = users
-		self.name = None
-		self.state = 'GETNAME'
-		self.fileReceiver = None
+import pdb
+
+class ProgrammersChatClientProtocol(LineReceiver):
+
+	name = ''
+	def __init__(self):
+		ProgrammersChatClientProtocol.state = 'SETNAME'
+		ProgrammersChatClientProtocol.fileName = ''
 		self.fileData = ()
+		self.fileSender = None
+		self.state
 
 	def connectionMade(self):
-		self.peerIP = self.transport.getPeer()
-		print self.peerIP, 'has joined.'
-		self.sendLine('GETNAME')
+		print 'Connected to server.'
+		forwarder = DataSenderProtocol(self)
+		self.screen = StandardIO(forwarder)
 		
-	def connectionLost(self, reason):
-		print 'Connection lost.'
-		print self.name
-		if self.users.has_key(self.name):
-			print '%s  has left : %s' % (self.name.strip(), reason)
-			del self.users[self.name]
 
 	def lineReceived(self, line):
 		print 'Line Received : ', line
-		print 'State : ', self.state
-		if line == '\n':
-			return
-		elif self.state == 'GETNAME':
-			self.handleGETNAME(line)
-		
-		elif self.state == 'CHAT':
-			line = line.strip()
-			if line.split()[0][0] == '/':
-				self.handleCOMMAND(line[1:])	
+		print 'State : ', ProgrammersChatClientProtocol.state
+		if ProgrammersChatClientProtocol.state == 'CHAT':
+			print 'Printing'
+			self.screen.write('\n' + line + '\n' + self.name.join('<>'))
+			print 'Printing finished'
+		elif line.strip() == 'GETNAME':
+			print('Enter Nick : ')
+		elif line.strip() == 'NAMEBLOCK':
+			print('Nick already in use. Try something else.')
+		elif line.split()[0] == 'NAMESET':
+			ProgrammersChatClientProtocol.state = 'CHAT'
+			self.name = line.split()[1].strip()
+		elif line.strip() == 'GET-FILE-SIZE':
+			print 'Sending file size : '
+			self.fileSize = getsize(ProgrammersChatClientProtocol.fileName)
+			self.sendLine(str(self.fileSize))
+			print 'File Size Sent'
+		elif line.strip() == 'RECV-FILE':
+			print 'Now sending...'
+			self.sendLine(ProgrammersChatClientProtocol.fileName)
+			#self.setRawMode()
+			self.sendFile()
+			print 'File Transfer Complete.'
+			
+	#def rawDataReceived(self, data):
+	#	pass
+	
+	
+	def sendFile(self):
+		if not self.fileSender:
+			self.fileSender =  open(ProgrammersChatClientProtocol.fileName, 'rb')
+		while True:
+			
+			self.fileData = self.fileSender.read(256)
+				
+			if self.fileData:
+				self.sendLine(self.fileData)
 			else:
-				line = self.name.strip().join('<>') + ' ' + line
-				self.handleCHAT(line)
-		elif line == 'SEND-FILE':
-			self.state = 'GET-FILE-SIZE'
-			self.sendLine(self.state)
-		elif self.state == 'GET-FILE-SIZE':
-			self.fileSize = int(line.strip())
-			self.state = 'RECV-FILE'
-			self.sendLine(self.state)
-		elif self.state == 'RECV-FILE':
-			self.fileData = self.fileName
-			print 'Receiving file : %s' % (self.fileName)
-			self.setRawMode()
-		
-		
-		
-	def rawDataReceived(self, data):
-		print 'Receiving file chunk %d KB' % (len(data))
-		self.filePath = '/home/dhanush/programmers_chat/downloads/' + self.fileName
-		if not self.fileReceiver:
-			self.fileReceiver = open(self.filePath, 'wb')
-
-		#if data.endswith(\r\n):
-		#	self.fileReceiver.write(data)
-		#	self.fileSize -= len(data)
-		#	print 'File Data :>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', data
-		if data.endswith('\r\n') :
-			self.fileReceiver.write(data[:-2])
-			self.setLineMode()
-			
-			#print 'File Transfer Complete.'
-			self.fileReceiver.close()
-			self.fileReceiver = None
-			self.fileData = ()
-			self.state = 'CHAT'
-			#self.setLineMode()
-		else:
-			self.fileReceiver.write(data)
-			
-	def handleGETNAME(self, name):
-		if self.users.has_key(name):
-			print 'Name in use'
-			self.sendLine('NAMEBLOCK')
-			return
-		
-		self.name = name
-		self.users[name] = self
-		self.state = 'CHAT'
-		nickConfirm = 'NAMESET' + ' ' + self.name.strip()
-		self.sendLine(nickConfirm)
-		self.sendLine("Welcome %s (%s) to  Programmer's Chat, Beta...\n" % (self.name.split(), self.peerIP))
-		print '%s is using %s as UserName.' % (self.peerIP, self.name.split())
-
-	def handleCHAT(self, message):
-		print message
-		for name, protocol in self.users.iteritems():
-			if protocol != self:
-				protocol.sendLine(message)
+				#self.setLineMode()
+				ProgrammersChatClientProtocol.state = 'CHAT'
+				self.fileSender.close()
+				self.fileSender = None
+				self.fileData = ()
+				ProgrammersChatClientProtocol.fileName = ''
+				return
 
 	def handleCOMMAND(self, command):
-		### TO DO : log the command
-		print command
-		if command == 'online':
-			onlineList = ''
-			for name, protocol in self.users.iteritems():
-				onlineList += ' ' + str(name)
-			
-			for name, protocol in self.users.iteritems():
-				if protocol == self:
-					self.sendLine(onlineList)
-					return
+		commandList =  command.strip().split()
+		if len(commandList) != 3: return 0
+		#try:
+		ProgrammersChatClientProtocol.fileName = commandList[2]
+		print 'Command Received : ', commandList
+		print 'File Name : ', ProgrammersChatClientProtocol.fileName
+		try:
+			with open(ProgrammersChatClientProtocol.fileName): 
+				print 'Setting state.'
+				ProgrammersChatClientProtocol.fileSize = getsize(ProgrammersChatClientProtocol.fileName)
+				ProgrammersChatClientProtocol.state = 'SEND-FILE'
+				print 'Setting state...'
+				self.sendLine(ProgrammersChatClientProtocol.state)
+				print 'Command state : ', ProgrammersChatClientProtocol.state 
+				print 'Line sent...'
+				#self.sendLine(self.fileName)
+				#self.fileName = command.strip().split()
+				#self.setRawMode()
+				print 'Getting out'
+				return 1
+		except IOError: 
+			print 'IOError'
+			return -1
+
 		
-		if command.split()[0] == 'send':
-			print '%s wants to send a file' % (self.name.strip())
-			self.state = 'GET-FILE-SIZE'
-			self.fileName = command.split()[2]
-			self.sendLine(self.state)
-			print 'FileName : %s' % (self.fileName)
+class ProgrammersChatClientProtocolFactory(ClientFactory):
 
-class ProgrammersChatFactory(ServerFactory):
-
-	def __init__(self):
-		self.users = {} 
+	def startedConnecting(self, connector):
+		print 'Connecting to Server . . .' 
 
 	def buildProtocol(self, addr):
-		return ProgrammersChatProtocol(self.users)
+		protocol = ProgrammersChatClientProtocol()
+		return protocol
 
-reactor.listenTCP(8123,  ProgrammersChatFactory())
-reactor.run()
+	def clientConnectionLost(self, connector, reason):
+		print 'Connection to server lost. Reason : ', reason
+		
+	def clientConnectionFailed(self, connector, reason):
+		print 'Connection to server Failed. Reason : ', reason
+		
+
+class DataSenderProtocol(Protocol, ProgrammersChatClientProtocol):
+	
+	def __init__(self, dataSender):
+		self.dataSender = dataSender
+
+	def dataReceived(self, data):
+		print 'Data Received : ', data
+		if data == '\n':
+			return
+		#l = data.strip().split()
+		if data[0] == '/':
+			#l[0] = l[0][1:]
+			#commandHandler = ProgrammersChatClientProtocol()
+			flag = self.handleCOMMAND(data[1:])
+			#flag = ProgrammersChatClientProtocol.handleCOMMAND(data[1:])
+			if flag == 1:
+				#self.state = 'SEND-FILE'
+				#self.dataSender.sendLine(ProgrammersChatClientProtocol.state)
+				#commandHandler.sendFile()
+				print 'Successful handleCOMMAND'
+				print 'State : ', ProgrammersChatClientProtocol.state
+				self.dataSender.sendLine(data)
+			elif flag == -1:
+				print 'No such file'
+			elif flag == 0:
+				print 'Format send command properly : /send receiver file'
+		else:
+			self.dataSender.sendLine(data)
+
+
+def main():
+	from twisted.internet import reactor
+	reactor.connectTCP('127.0.0.1', 8123, ProgrammersChatClientProtocolFactory())
+	reactor.run()
+
+if __name__ == '__main__':
+	main()
